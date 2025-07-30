@@ -1,32 +1,41 @@
 import pytest
-import os
-
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.firefox import GeckoDriverManager
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.service import Service as FirefoxService
+
 
 def pytest_addoption(parser):
-    parser.addoption("--browser", default="chrome")
-    parser.addoption("--drivers", default=os.path.expanduser("~/Downloads/drivers"))
+    parser.addoption(
+        "--browser", action="store", default="chrome",
+        help="Browser type: chrome or firefox"
+    )
+    parser.addoption(
+        "--base_url", action="store", default="http://localhost",
+        help="Base URL for OpenCart (e.g., http://localhost)"
+    )
 
 
 @pytest.fixture
 def browser(request):
-    browser = request.config.getoption("--browser")
-    drivers = request.config.getoption("--drivers")
+    browser_type = request.config.getoption("--browser").lower()
+    base_url = request.config.getoption("--base_url")
 
-    if browser == "chrome":
-        service = Service()
-        driver = webdriver.Chrome(service=service)
-    elif browser == "yandex":
-        options = webdriver.ChromeOptions()
-        service = Service(executable_path=os.path.join(drivers, "yandexdriver"))
-        options.binary_location = "/usr/bin/yandex-browser"
-        driver = webdriver.Chrome(service=service, options=options)
-    elif browser == "firefox":
-        driver = webdriver.Firefox()
+    if browser_type == "chrome":
+        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
+    elif browser_type == "firefox":
+        driver = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()))
     else:
-        raise Exception("Driver not supported")
+        raise ValueError(f"Unsupported browser: {browser_type}")
 
-    request.addfinalizer(driver.quit)
+    driver.maximize_window()
+    driver.base_url = base_url
+    yield driver
+    driver.quit()
 
-    return driver
+
+@pytest.fixture
+def base_url(request):
+    return request.config.getoption("--base_url")
+
