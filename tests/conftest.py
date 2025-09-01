@@ -30,9 +30,13 @@ def browser(request):
     base_url = request.config.getoption("--base_url")
 
     if browser_type == "chrome":
-        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
+        driver = webdriver.Chrome(
+            service=ChromeService(ChromeDriverManager().install())
+        )
     elif browser_type == "firefox":
-        driver = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()))
+        driver = webdriver.Firefox(
+            service=FirefoxService(GeckoDriverManager().install())
+        )
     else:
         raise ValueError(f"Unsupported browser: {browser_type}")
 
@@ -59,14 +63,12 @@ def pytest_runtest_makereport(item, call):
             allure.attach(
                 screenshot,
                 name=f"screenshot_{item.name}",
-                attachment_type=allure.attachment_type.PNG
+                attachment_type=allure.attachment_type.PNG,
             )
 
             screenshots_dir = os.path.join(os.getcwd(), "screenshots")
             os.makedirs(screenshots_dir, exist_ok=True)
 
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            file_path = os.path.join(
-                screenshots_dir, f"{item.name}_{timestamp}.png"
-            )
+            file_path = os.path.join(screenshots_dir, f"{item.name}_{timestamp}.png")
             driver.save_screenshot(file_path)
