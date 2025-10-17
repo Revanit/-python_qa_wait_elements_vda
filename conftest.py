@@ -1,41 +1,45 @@
 import pytest
-from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.firefox import GeckoDriverManager
-from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium.webdriver.firefox.service import Service as FirefoxService
+import pymysql
 
 
 def pytest_addoption(parser):
-    parser.addoption(
-        "--browser", action="store", default="chrome",
-        help="Browser type: chrome or firefox"
-    )
-    parser.addoption(
-        "--base_url", action="store", default="http://localhost",
-        help="Base URL for OpenCart (e.g., http://localhost)"
-    )
+    """Добавляем параметры для подключения к БД через CLI (опционально)"""
+    parser.addoption("--host", action="store", default=None, help="Database host")
+    parser.addoption("--port", action="store", default=None, type=int, help="Database port")
+    parser.addoption("--database", action="store", default=None, help="Database name")
+    parser.addoption("--user", action="store", default=None, help="Database user")
+    parser.addoption("--password", action="store", default=None, help="Database password")
 
 
-@pytest.fixture
-def browser(request):
-    browser_type = request.config.getoption("--browser").lower()
-    base_url = request.config.getoption("--base_url")
+@pytest.fixture(scope="session")
+def connection(request):
+    """Создаём соединение с БД (один раз за сессию pytest)"""
 
-    if browser_type == "chrome":
-        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
-    elif browser_type == "firefox":
-        driver = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()))
-    else:
-        raise ValueError(f"Unsupported browser: {browser_type}")
+    # Если параметры не переданы — берём дефолтные из docker-compose
+    host = request.config.getoption("--host") or "127.0.0.1"  # или "mysql" если pytest в контейнере
+    port = request.config.getoption("--port") or 3306
+    database = request.config.getoption("--database") or "opencart"
+    user = request.config.getoption("--user") or "root"
+    password = request.config.getoption("--password") or "opencart"
 
-    driver.maximize_window()
-    driver.base_url = base_url
-    yield driver
-    driver.quit()
+    # Пробуем подключиться
+    try:
+        conn = pymysql.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database=database,
+            cursorclass=pymysql.cursors.DictCursor,
+            autocommit=True
+        )
+        print(f"Подключено к базе данных '{database}' на {host}:{port} пользователем '{user}'")
+    except pymysql.MySQLError as e:
+        pytest.exit(f"Ошибка подключения к базе данных: {e}")
 
+    yield conn
 
-@pytest.fixture
-def base_url(request):
-    return request.config.getoption("--base_url")
+    conn.close()
+    print("Соединение с БД закрыто.")
+
 
