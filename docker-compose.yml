@@ -1,0 +1,69 @@
+services:
+  mariadb:
+    image: mariadb:10.5
+    environment:
+      - MYSQL_ROOT_PASSWORD=opencart
+      - MYSQL_DATABASE=bitnami_opencart
+      - MYSQL_USER=bn_opencart
+      - MYSQL_PASSWORD=bn_opencart
+    ports:
+      - "3306:3306"
+    networks:
+      - selenoid
+
+  phpadmin:
+    image: 'phpmyadmin/phpmyadmin:latest'
+    environment:
+      - PMA_HOST=mariadb
+      - PMA_PORT=3306
+      - PMA_USER=bn_opencart
+    ports:
+      - '${PHPADMIN_PORT}:80'
+    depends_on:
+      - mariadb
+    networks:
+      - selenoid
+
+  opencart:
+    image: agridyaev/opencart:4.0.2-3-debian-12-r33
+    ports:
+      - '${OPENCART_PORT}:8080'
+      - '443:8443'
+    environment:
+      - OPENCART_HOST=${LOCAL_IP}:${OPENCART_PORT}
+      - OPENCART_DATABASE_HOST=mariadb
+      - OPENCART_DATABASE_PORT_NUMBER=3306
+      - OPENCART_DATABASE_USER=bn_opencart
+      - OPENCART_DATABASE_PASSWORD=bn_opencart
+      - OPENCART_DATABASE_NAME=bitnami_opencart
+    depends_on:
+      - mariadb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - selenoid
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      opencart:
+        condition: service_healthy
+    environment:
+      - OPENCART_URL=http://${LOCAL_IP}:${OPENCART_PORT}
+      - BROWSER=chrome
+      - BROWSER_VERSION=120.0
+      - EXECUTOR=selenoid
+    volumes:
+      - ./wait-for-opencart.sh:/app/wait-for-opencart.sh
+    entrypoint: [ "/bin/bash", "/app/wait-for-opencart.sh" ]
+    networks:
+      - selenoid
+
+
+networks:
+  selenoid:
