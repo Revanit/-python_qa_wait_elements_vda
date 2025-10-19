@@ -1,4 +1,7 @@
+import os
+import datetime
 import pytest
+import allure
 from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
@@ -8,12 +11,16 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--browser", action="store", default="chrome",
-        help="Browser type: chrome or firefox"
+        "--browser",
+        action="store",
+        default="chrome",
+        help="Browser type: chrome or firefox",
     )
     parser.addoption(
-        "--base_url", action="store", default="http://localhost",
-        help="Base URL for OpenCart (e.g., http://localhost)"
+        "--base_url",
+        action="store",
+        default="http://localhost",
+        help="Base URL for OpenCart (e.g., http://localhost)",
     )
 
 
@@ -39,3 +46,27 @@ def browser(request):
 def base_url(request):
     return request.config.getoption("--base_url")
 
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+
+    if rep.when == "call" and rep.failed:
+        driver = item.funcargs.get("browser")
+        if driver:
+            screenshot = driver.get_screenshot_as_png()
+            allure.attach(
+                screenshot,
+                name=f"screenshot_{item.name}",
+                attachment_type=allure.attachment_type.PNG
+            )
+
+            screenshots_dir = os.path.join(os.getcwd(), "screenshots")
+            os.makedirs(screenshots_dir, exist_ok=True)
+
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            file_path = os.path.join(
+                screenshots_dir, f"{item.name}_{timestamp}.png"
+            )
+            driver.save_screenshot(file_path)
