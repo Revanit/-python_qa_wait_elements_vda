@@ -4,6 +4,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
+
 def test_admin_login_logout(browser, base_url):
     browser.get(base_url + "/admin")
     browser.find_element(By.ID, "input-username").send_keys("admin")
