@@ -1,8 +1,8 @@
 import pytest
+import allure
 from appium import webdriver
 from appium.options.common import AppiumOptions
 from appium.webdriver.common.appiumby import AppiumBy
-from selenium.webdriver.remote.command import Command
 
 options = AppiumOptions()
 options.load_capabilities({
@@ -13,10 +13,6 @@ options.load_capabilities({
 
 appium_server_url = 'http://192.168.1.3:4723'
 
-class ReportCommand(Command):
-    GET_REPORT: str = "getReport"
-    DELETE_REPORT: str = "deleteReport"
-    SET_TEST_INFO: str = "setTestInfo"
 
 @pytest.fixture()
 def driver():
@@ -24,33 +20,40 @@ def driver():
     yield android_driver
     android_driver.quit()
 
+
+@allure.title("Пролистываем до приложения Calendar")
 def test_swipe(driver):
-    driver.command_executor._commands = {**driver.command_executor._commands,
-                                         ReportCommand.GET_REPORT: ("GET", "/getReport"),
-                                         ReportCommand.DELETE_REPORT: ("DELETE", "/deleteReportData"),
-                                         ReportCommand.SET_TEST_INFO: ("POST", "/setTestInfo"),
-                                         }
+    element_names = []
 
-    driver.execute(ReportCommand.DELETE_REPORT)
     try:
-        while True:
-            elements = driver.find_elements(AppiumBy.ID, "com.csdroid.pkg:id/tv_title")
-            print(elements[0].rect)
+        with allure.step("Находим элементы списка и делаем swipe"):
+            while True:
+                elements = driver.find_elements(AppiumBy.ID, "com.csdroid.pkg:id/tv_title")
 
-            driver.swipe(elements[1].rect['x'], elements[1].rect['y'], elements[0].rect['x'], elements[0].rect['y'])
+                if len(elements) < 2:
+                    break  # если элементов меньше двух — прерываем
 
-            elements = driver.find_elements(AppiumBy.ID, "com.csdroid.pkg:id/tv_title")
-            element_names = [name.text for name in elements]
-            print(element_names)
+                # Логируем координаты
+                for i, el in enumerate(elements):
+                    allure.attach(str(el.rect), f"element_{i}_rect", allure.attachment_type.TEXT)
 
-            if 'Camera' in element_names:
-                break
+                # swipe между первыми двумя элементами
+                driver.swipe(elements[1].rect['x'], elements[1].rect['y'],
+                             elements[0].rect['x'], elements[0].rect['y'])
+
+                element_names = [el.text for el in elements]
+
+                # Логируем найденные названия
+                allure.attach(", ".join(element_names), "current_screen_elements", allure.attachment_type.TEXT)
+
+                if 'Calendar' in element_names:
+                    break
+
+        with allure.step("Проверяем, что Calendar найден"):
+            assert 'Calendar' in element_names, "Приложение Calendar не найдено!"
+
     finally:
-
-        test_status = "PASSED" if 'Camera' in element_names else "FAILED"
-
-        driver.execute(ReportCommand.SET_TEST_INFO,
-                   {"sessionId": driver.session_id, "testName": 'test_one', "testStatus": test_status})
-        html = driver.execute(ReportCommand.GET_REPORT)
-        with open("report.html", "wt") as r:
-            r.write(html['value'])
+        # Скриншот в случае ошибки
+        if 'Calendar' not in element_names:
+            screenshot = driver.get_screenshot_as_png()
+            allure.attach(screenshot, "screenshot", allure.attachment_type.PNG)
