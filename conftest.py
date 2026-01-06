@@ -1,41 +1,53 @@
 import pytest
-from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.firefox import GeckoDriverManager
-from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium.webdriver.firefox.service import Service as FirefoxService
+from appium import webdriver
+from appium.options.common import AppiumOptions
+from selenium.webdriver.remote.command import Command
+
+options = AppiumOptions()
+options.load_capabilities({
+    "platformName": "Android",
+    "appium:automationName": "UiAutomator2",
+    # "appium:app": "C:/Users/User/Downloads/pnv.apk"
+})
+
+appium_server_url = 'http://192.168.1.3:4723'
+
+class ReportCommand(Command):
+    GET_REPORT: str = "getReport"
+    DELETE_REPORT: str = "deleteReport"
+    SET_TEST_INFO: str = "setTestInfo"
+
+@pytest.fixture()
+def driver():
+    android_driver = webdriver.Remote(appium_server_url, options=options)
+    android_driver.command_executor._commands = {**android_driver.command_executor._commands,
+                                         ReportCommand.GET_REPORT: ("GET", "/getReport"),
+                                         ReportCommand.DELETE_REPORT: ("DELETE", "/deleteReportData"),
+                                         ReportCommand.SET_TEST_INFO: ("POST", "/setTestInfo"),
+                                         }
+    android_driver.execute(ReportCommand.DELETE_REPORT)
+    yield android_driver
+    android_driver.quit()
 
 
-def pytest_addoption(parser):
-    parser.addoption(
-        "--browser", action="store", default="chrome",
-        help="Browser type: chrome or firefox"
-    )
-    parser.addoption(
-        "--base_url", action="store", default="http://localhost",
-        help="Base URL for OpenCart (e.g., http://localhost)"
-    )
 
 
-@pytest.fixture
-def browser(request):
-    browser_type = request.config.getoption("--browser").lower()
-    base_url = request.config.getoption("--base_url")
 
-    if browser_type == "chrome":
-        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
-    elif browser_type == "firefox":
-        driver = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()))
-    else:
-        raise ValueError(f"Unsupported browser: {browser_type}")
+@pytest.fixture()
+def report(driver, request):
+    yield
+    test_name = request.node.name
+    test_status = request.node.get_closest_marker('status').kwargs.get('status', 'unknown')
 
-    driver.maximize_window()
-    driver.base_url = base_url
-    yield driver
-    driver.quit()
+    driver.execute(ReportCommand.SET_TEST_INFO,
+                   {"sessionId": driver.session_id, "testName": test_name, "testStatus": test_status})
+    html = driver.execute(ReportCommand.GET_REPORT)
+    with open("report.html", "wt") as r:
+        r.write(html['value'])
 
-
-@pytest.fixture
-def base_url(request):
-    return request.config.getoption("--base_url")
-
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    if rep.when == 'call':
+        item.add_marker(pytest.mark.status(status=rep.outcome))
